@@ -14,7 +14,7 @@ const name = "dsh-rewind";
 const inject = ["webServer", "sessions", "connection"];
 
 const DEFAULT_IGNORE_NAMES = [
-  ".git", "node_modules", ".pnpm-store", ".venv", "venv", "__pycache__",
+  ".git", ".dsh", "node_modules", ".pnpm-store", ".venv", "venv", "__pycache__",
   "dist", "build", ".next", ".nuxt", ".idea", ".vscode", ".mypy_cache",
   ".pytest_cache", ".DS_Store", "coverage", ".turbo", ".cache", "target"
 ];
@@ -80,6 +80,20 @@ function toRelative(root, absolute) {
   return rel === "" ? "." : rel;
 }
 
+/** Whether `target` equals `root` or lies below it (both resolved absolute paths). */
+function isSameOrInside(target, root) {
+  return target === root || target.startsWith(root + sep);
+}
+
+/** Reject values that would escape (or collapse) a single storage path segment. */
+function isSafeStorageSegment(value) {
+  return typeof value === "string" && value !== "" && value !== "." && value !== ".." && !/[/\\\0]/.test(value);
+}
+
+async function pathExists(path) {
+  try { await stat(path); return true; } catch { return false; }
+}
+
 async function hashFile(path) {
   const hash = createHash("sha256");
   await pipeline(createReadStream(path), hash);
@@ -100,6 +114,9 @@ async function walkWorkspace(root, options = {}, previousFiles) {
   const maxFiles = options.maxFiles ?? 1e5;
   const enableGitignore = options.enableGitignore ?? true;
   const logger = options.logger ?? {};
+  // Absolute subtrees never snapshotted or restored, even when the workspace is
+  // an ancestor of them (the caller skips such workspaces, this is a backstop).
+  const excludeRoots = (options.excludeRoots ?? []).map((root) => resolve(root));
   const files = {};
   const rootAbs = resolve(root);
   let gitignoreRules = [];
@@ -114,6 +131,7 @@ async function walkWorkspace(root, options = {}, previousFiles) {
     for (const entry of entries) {
       if (count >= maxFiles) break;
       const absolute = join(dir, entry.name);
+      if (excludeRoots.some((excluded) => isSameOrInside(absolute, excluded))) continue;
       const rel = toRelative(rootAbs, absolute);
       if (entry.isDirectory()) {
         if (!isIgnored(rel, ignoreNames, ignorePatterns, true, gitignoreRules)) await walk(absolute);
@@ -153,6 +171,7 @@ class CheckpointStore {
       maxFiles: options.maxFiles ?? 1e5,
       maxTotalBlobBytes: options.maxTotalBlobBytes ?? 500 * 1024 * 1024,
       enableGitignore: options.enableGitignore ?? true,
+      excludeRoots: options.excludeRoots ?? [],
       logger: options.logger ?? {}
     };
     this.baselineLoaded = false;
@@ -290,7 +309,8 @@ class CheckpointStore {
     const absolute = (rel) => resolve(this.root, rel);
     const within = (rel) => {
       const abs = absolute(rel);
-      return abs === this.root || abs.startsWith(this.root + sep);
+      if (this.options.excludeRoots.some((excluded) => isSameOrInside(abs, excluded))) return false;
+      return isSameOrInside(abs, this.root);
     };
     for (const rel of Object.keys(current)) {
       if (checkpoint.files[rel] !== undefined) continue;
@@ -332,8 +352,8 @@ async function loadConfig() {
     const parsed = JSON.parse(raw);
     return {
       enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : true,
-      ...(Array.isArray(parsed.ignoreNames) ? { ignoreNames: parsed.ignoreNames } : {}),
-      ...(Array.isArray(parsed.ignorePatterns) ? { ignorePatterns: parsed.ignorePatterns } : {}),
+      ...(Array.isArray(parsed.ignoreNames) ? { ignoreNames: parsed.ignoreNames.filter((value) => typeof value === "string") } : {}),
+      ...(Array.isArray(parsed.ignorePatterns) ? { ignorePatterns: parsed.ignorePatterns.filter((value) => typeof value === "string") } : {}),
       ...(typeof parsed.trackSizeCap === "number" ? { trackSizeCap: parsed.trackSizeCap } : {}),
       ...(typeof parsed.blobSizeCap === "number" ? { blobSizeCap: parsed.blobSizeCap } : {}),
       ...(typeof parsed.maxFiles === "number" ? { maxFiles: parsed.maxFiles } : {}),
@@ -346,12 +366,17 @@ async function loadConfig() {
 }
 
 function runGit(cwd, args, timeoutMs = 15000) {
+  // Never inherit repository overrides from the host process environment: a
+  // GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE would point these commands at a
+  // different repository (or index) than the session workspace.
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" };
+  for (const key of ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR"]) delete env[key];
   return new Promise((resolve) => {
     execFile("git", args, {
       cwd,
       timeout: timeoutMs,
       maxBuffer: 16 * 1024 * 1024,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" }
+      env
     }, (error, stdout, stderr) => {
       resolve({ ok: !error, code: error ? (error.code ?? 1) : 0, stdout: stdout ?? "", stderr: stderr ?? "" });
     });
@@ -407,6 +432,12 @@ function apply(ctx) {
   const chains = new Map();
   let configPromise = null;
   const config = () => { configPromise ??= loadConfig(); return configPromise; };
+  const warnedOnce = new Set();
+  const warnOnce = (key, message) => {
+    if (warnedOnce.has(key)) return;
+    warnedOnce.add(key);
+    ctx.logger?.warn?.(message);
+  };
   const enqueue = (sessionId, task) => {
     const previous = chains.get(sessionId) ?? Promise.resolve();
     const next = previous.then(task, task);
@@ -424,24 +455,47 @@ function apply(ctx) {
   async function workspaceRootOf(sessionId) {
     const live = ctx.sessions.get(sessionId);
     const liveCwd = live?.header?.cwd;
-    if (liveCwd !== undefined && liveCwd !== "") return liveCwd;
+    if (typeof liveCwd === "string" && liveCwd !== "") return liveCwd;
     const persistence = ctx.get("sessionPersistence");
     if (persistence === undefined) return undefined;
-    try { return (await persistence.inspect(sessionId)).meta.cwd; } catch { return undefined; }
+    // DSH 0.2.1 SessionPersistence has no inspect(); stat(id) returns
+    // { header, revision, ... } or undefined (README "What the service provides").
+    // The legacy inspect() shape is kept as a fallback so hosts that still
+    // expose it (and older backends) keep working.
+    if (typeof persistence.stat === "function") {
+      try {
+        const snapshot = await persistence.stat(sessionId);
+        const cwd = snapshot?.header?.cwd;
+        if (typeof cwd === "string" && cwd !== "") return cwd;
+      } catch {}
+    }
+    if (typeof persistence.inspect === "function") {
+      try {
+        const inspected = await persistence.inspect(sessionId);
+        const cwd = inspected?.meta?.cwd;
+        if (typeof cwd === "string" && cwd !== "") return cwd;
+      } catch {}
+    }
+    return undefined;
   }
 
   async function storeFor(sessionId) {
     const existing = stores.get(sessionId);
     if (existing !== undefined) return existing;
-    const root = await workspaceRootOf(sessionId);
-    if (root === undefined) return undefined;
+    if (!isSafeStorageSegment(sessionId)) return undefined;
+    const rawRoot = await workspaceRootOf(sessionId);
+    if (rawRoot === undefined) return undefined;
+    const root = resolve(rawRoot);
     const home = dshHome();
-    if (root === home || root.startsWith(home + sep)) return undefined;
+    // Skip a workspace inside the DSH home AND one that is an ancestor of it
+    // (for example the OS home directory): either would put ~/.dsh/** into the
+    // snapshot, including credentials and session logs.
+    if (isSameOrInside(root, home) || isSameOrInside(home, root)) return undefined;
     const { enabled, ...options } = await config();
     if (enabled === false) return undefined;
     const dir = join(storageRoot(), sessionId);
     await mkdir(dir, { recursive: true });
-    const store = new CheckpointStore(dir, root, { ...options, logger: ctx.logger });
+    const store = new CheckpointStore(dir, root, { ...options, excludeRoots: [home], logger: ctx.logger });
     stores.set(sessionId, store);
     return store;
   }
@@ -469,20 +523,43 @@ function apply(ctx) {
   async function autoCommitFor(sessionId, turn) {
     const cfg = await config();
     if (cfg.gitAutoCommit === false) return;
-    const root = await workspaceRootOf(sessionId);
-    if (root === undefined) return;
+    const rootOfSession = await workspaceRootOf(sessionId);
+    if (rootOfSession === undefined) return;
+    const root = resolve(rootOfSession);
     const home = dshHome();
-    if (root === home || root.startsWith(home + sep)) return;
+    if (isSameOrInside(root, home) || isSameOrInside(home, root)) return;
     const inside = await runGit(root, ["rev-parse", "--is-inside-work-tree"]);
     if (!inside.ok) return;
-    const status = await runGit(root, ["status", "--porcelain"]);
+    // Only commit when the session workspace IS the repository root. From a
+    // subdirectory `git add -A` stages the whole work tree (Git 2.0 semantics),
+    // which would sweep unrelated user changes into this checkpoint commit.
+    // --show-prefix is empty exactly at the work-tree root (symlink-safe).
+    const workTreePrefix = await runGit(root, ["rev-parse", "--show-prefix"]);
+    if (!workTreePrefix.ok) return;
+    if (workTreePrefix.stdout.trim() !== "") {
+      warnOnce(`git-root:${sessionId}`, `dsh-rewind: git auto-commit skipped in ${root}: not the repository root`);
+      return;
+    }
+    // Never conclude a user's in-progress merge/rebase/cherry-pick/revert/bisect.
+    const gitDir = await runGit(root, ["rev-parse", "--git-dir"]);
+    if (!gitDir.ok || gitDir.stdout.trim() === "") return;
+    const gitDirAbs = resolve(root, gitDir.stdout.trim());
+    for (const marker of ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG", "rebase-merge", "rebase-apply"]) {
+      if (await pathExists(join(gitDirAbs, marker))) {
+        warnOnce(`git-op:${sessionId}:${marker}`, `dsh-rewind: git auto-commit skipped in ${root}: ${marker} present`);
+        return;
+      }
+    }
+    // Stay inside the workspace: pathspecs keep both the status check and the
+    // commit from touching anything the user staged outside of it.
+    const status = await runGit(root, ["status", "--porcelain", "--", "."]);
     if (!status.ok) { ctx.logger?.warn?.(`dsh-rewind: git status failed in ${root}`); return; }
     if (status.stdout.trim() === "") return;
-    const added = await runGit(root, ["add", "-A"]);
+    const added = await runGit(root, ["add", "-A", "--", "."]);
     if (!added.ok) { ctx.logger?.warn?.(`dsh-rewind: git add failed in ${root}: ${added.stderr.trim()}`); return; }
     const prefix = cfg.gitCommitPrefix ?? "dsh: checkpoint before turn";
     const message = turn !== undefined ? `${prefix} ${turn}` : prefix;
-    const committed = await runGit(root, ["commit", "-m", message]);
+    const committed = await runGit(root, ["commit", "-m", message, "--", "."]);
     if (!committed.ok) ctx.logger?.warn?.(`dsh-rewind: git commit failed in ${root}: ${committed.stderr.trim()}`);
   }
 
@@ -498,12 +575,56 @@ function apply(ctx) {
     return off;
   }, "dsh-rewind: git auto-commit");
 
+  // Drop per-session bookkeeping so a long-lived host does not retain one store
+  // and two promise chains per session forever. Pending tasks keep their own
+  // references; a later cold request rebuilds the store from disk.
+  ctx.effect(() => {
+    const off = ctx.on("session/disposed", (session) => {
+      const sessionId = session?.header?.id ?? session?.id;
+      if (sessionId === undefined) return;
+      stores.delete(sessionId);
+      chains.delete(sessionId);
+      gitChains.delete(sessionId);
+      for (const key of warnedOnce) {
+        if (key.endsWith(`:${sessionId}`) || key.includes(`:${sessionId}:`)) warnedOnce.delete(key);
+      }
+    });
+    return off;
+  }, "dsh-rewind: session cleanup");
+
+  function liveEventsOf(live) {
+    try {
+      // Full log: a forked session needs its inherited prefix too, because the
+      // client's atSeq may point at an inherited turn/end. DSH 0.2.1 Session
+      // exposes snapshotEvents() (deprecated but present); .events never exists.
+      if (typeof live?.snapshotEvents === "function") return live.snapshotEvents();
+      if (typeof live?.ownEvents === "function") return live.ownEvents();
+    } catch {}
+    return Array.isArray(live?.events) ? live.events : [];
+  }
+
   async function eventsOf(sessionId) {
     const live = ctx.sessions.get(sessionId);
-    if (live !== undefined) return live.events ?? [];
+    if (live !== undefined) return liveEventsOf(live);
     const persistence = ctx.get("sessionPersistence");
-    if (persistence !== undefined) {
-      try { return (await persistence.inspect(sessionId)).events ?? []; } catch {}
+    if (persistence === undefined) return [];
+    if (typeof persistence.open === "function") {
+      let handle;
+      try {
+        handle = await persistence.open(sessionId, "read");
+        const slice = await handle.read();
+        if (Array.isArray(slice?.events)) return slice.events;
+      } catch {
+        // fall through to the legacy inspect() shape
+      } finally {
+        if (handle !== undefined) { try { await handle.close(); } catch {} }
+      }
+    }
+    if (typeof persistence.inspect === "function") {
+      try {
+        const inspected = await persistence.inspect(sessionId);
+        return Array.isArray(inspected?.events) ? inspected.events : [];
+      } catch {}
     }
     return [];
   }
@@ -543,12 +664,17 @@ function apply(ctx) {
         return;
       }
       const rejection = connection.requestRejection(req);
-      if (rejection !== undefined) { res.statusCode = rejection; res.end(); return; }
+      if (rejection !== undefined && rejection !== null) {
+        // Fail closed on an unexpected rejection shape (0.2.1 returns 401/403).
+        res.statusCode = typeof rejection === "number" ? rejection : 503;
+        res.end();
+        return;
+      }
       if (req.method !== "POST") { sendJson(res, 405, { ok: false, error: { code: "method-error", message: "method not allowed" } }); return; }
       const url = new URL(req.url ?? "/", "http://dsh.internal");
       const method = url.pathname.startsWith("/dsh-rewind/api/") ? url.pathname.slice("/dsh-rewind/api/".length) : undefined;
       if (method === undefined || method.includes("/")) { sendJson(res, 404, { ok: false, error: { code: "not-found", message: "unknown method" } }); return; }
-      const handler = api[method];
+      const handler = Object.hasOwn(api, method) ? api[method] : undefined;
       if (handler === undefined) { sendJson(res, 404, { ok: false, error: { code: "not-found", message: `unknown method "${method}"` } }); return; }
       try {
         const payload = await readJsonBody(req);

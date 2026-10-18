@@ -26,8 +26,9 @@ window.__ModuleLoader__.load({
       rollbackDone: "已回退：还原 {restored} 个文件，删除 {deleted} 个",
       rollbackPartial: "已回退：还原 {restored} 个文件，删除 {deleted} 个（{skipped} 个跳过）",
       rollbackNone: "已回退（本会话没有可还原的文件记录）",
-      restoreFailed: "对话已回退，但工作区文件还原失败",
+      restoreFailed: "对话已回退，但工作区文件还原失败：{message}",
       restoreFiles: "同时还原工作区文件",
+      forkFailed: "创建子会话失败",
       edit: "修改并重发",
       editBusy: "处理中…",
       regenerate: "重新生成（保留文件）",
@@ -38,6 +39,7 @@ window.__ModuleLoader__.load({
       star: "收藏这条消息",
       starRemove: "取消收藏",
       continueBtn: "继续",
+      continueText: "继续",
       continueFailed: "发送「继续」失败",
       history: "输入历史",
       historyEmpty: "暂无历史",
@@ -48,6 +50,7 @@ window.__ModuleLoader__.load({
       phraseHint: "每行一条短语",
       starred: "收藏的消息",
       starredEmpty: "暂无收藏",
+      starTurn: "第 {turn} 轮",
       cancel: "取消",
       confirm: "确认",
       errorPrefix: "操作失败：",
@@ -66,8 +69,9 @@ window.__ModuleLoader__.load({
       rollbackDone: "Rolled back: restored {restored} files, deleted {deleted}",
       rollbackPartial: "Rolled back: restored {restored}, deleted {deleted} ({skipped} skipped)",
       rollbackNone: "Rolled back (no restorable file records for this session)",
-      restoreFailed: "Conversation rolled back, but restoring workspace files failed",
+      restoreFailed: "Conversation rolled back, but restoring workspace files failed: {message}",
       restoreFiles: "Also restore workspace files",
+      forkFailed: "Failed to create the forked session",
       edit: "Edit & resend",
       editBusy: "Working…",
       regenerate: "Regenerate (keep files)",
@@ -78,6 +82,7 @@ window.__ModuleLoader__.load({
       star: "Star this message",
       starRemove: "Unstar",
       continueBtn: "Continue",
+      continueText: "Continue",
       continueFailed: "Sending “continue” failed",
       history: "Input history",
       historyEmpty: "No history",
@@ -88,6 +93,7 @@ window.__ModuleLoader__.load({
       phraseHint: "One prompt per line",
       starred: "Starred messages",
       starredEmpty: "No starred messages",
+      starTurn: "Turn {turn}",
       cancel: "Cancel",
       confirm: "Confirm",
       errorPrefix: "Failed: ",
@@ -174,9 +180,9 @@ window.__ModuleLoader__.load({
       await settle(binding.session.cancel());
     }
 
-    /** Archive the old session; never throws. */
+    /** Archive the old session; never throws. Signature is (sessionId, options?) on the client. */
     async function archive(ctx, sessionId) {
-      await settle(ctx.workspaces.archiveSession({ sessionId }));
+      await settle(ctx.workspaces.archiveSession(sessionId));
     }
 
     /** Replace the composer draft for a session; never throws. */
@@ -241,10 +247,12 @@ window.__ModuleLoader__.load({
         else cut.restoreError = restored.error instanceof Error ? restored.error.message : String(restored.error);
       }
 
-      await archive(ctx, sessionId);
       if (cut.childId !== null) {
         safeCompute(undefined, () => ctx.uiWorkspace.openSession(cut.childId));
         if (typeof draftText === "string" && draftText !== "") await setDraftOn(ctx, cut.childId, draftText);
+        // Archive only after the child exists and was opened: a failed fork keeps
+        // the current session selectable instead of archiving it for nothing.
+        await archive(ctx, sessionId);
       }
       return cut;
     }
@@ -335,18 +343,38 @@ window.__ModuleLoader__.load({
       }
       return ends;
     }
-    function turnOfNode(chatSnap, nodeKey) {
+    /**
+     * Resolve the durable user node for one question seq. The per-question action
+     * row is itself a chat node (kind "dsh-rewind-actions"), so `props.node` in its
+     * renderer is NOT the user node; the user node is looked up from the seq that
+     * buildViewNode copied out of the user/message event.
+     */
+    function findUserNode(chatSnap, seq) {
+      if (typeof seq !== "number") return undefined;
+      for (const n of safeCompute([], () => [...chatSnap.nodes.values()])) {
+        if (n === undefined || n === null || n.kind !== "user") continue;
+        if (n.data?.seq === seq || n.anchorSeq === seq) return n;
+      }
+      return undefined;
+    }
+    function turnOfNode(chatSnap, node) {
+      const location = node?.location;
+      if (location !== undefined && location !== null && (location.kind === "turn" || location.kind === "step")) {
+        const turn = Number(location.turn?.turn);
+        if (Number.isInteger(turn)) return turn;
+      }
       const order = chatSnap.timeline?.turnOrder;
       if (!Array.isArray(order)) return undefined;
       return order.find((turn) => {
         const keys = safeCompute([], () => chatSnap.locations.getTurn(turn));
-        return Array.isArray(keys) && keys.includes(nodeKey);
+        return Array.isArray(keys) && keys.includes(node?.key);
       });
     }
-    function analyzeQuestion(chatSnap, nodeKey) {
-      const node = safeCompute(undefined, () => chatSnap.nodes.get(nodeKey));
-      if (node === undefined || node === null || node.kind !== "user") return null;
-      const turn = turnOfNode(chatSnap, nodeKey);
+    function analyzeQuestion(chatSnap, seq) {
+      const node = findUserNode(chatSnap, seq);
+      if (node === undefined) return null;
+      const nodeSeq = typeof node.anchorSeq === "number" ? node.anchorSeq : seq;
+      const turn = turnOfNode(chatSnap, node);
       if (turn === undefined) return null;
       const userText = textOfContent(node.data?.content);
       const ends = completedTurnEnds(chatSnap);
@@ -358,10 +386,10 @@ window.__ModuleLoader__.load({
           if (maxUserSeq === undefined || n.anchorSeq > maxUserSeq) maxUserSeq = n.anchorSeq;
         }
       }
-      const nodeSeq = typeof node.anchorSeq === "number" ? node.anchorSeq : undefined;
       const isLastQuestion = maxUserSeq !== undefined && nodeSeq !== undefined && nodeSeq >= maxUserSeq;
       return { turn, nodeSeq, userText, isLastQuestion, boundarySeq };
     }
+    /** Assistant text of one turn. Blocks use `kind` in 0.2.x (ui-chat assistantText); accept `type` too. */
     function assistantTextOfTurn(chatSnap, turn) {
       const keys = safeCompute([], () => chatSnap.locations.getTurn(turn));
       const parts = [];
@@ -370,7 +398,10 @@ window.__ModuleLoader__.load({
         if (n === undefined || n === null || n.kind !== "assistant-step") continue;
         const blocks = n.data?.blocks;
         if (Array.isArray(blocks)) {
-          for (const b of blocks) if (b?.type === "text" && typeof b.text === "string" && b.text.trim() !== "") parts.push(b.text);
+          for (const b of blocks) {
+            const isText = b?.kind === "text" || b?.type === "text";
+            if (isText && typeof b.text === "string" && b.text.trim() !== "") parts.push(b.text);
+          }
         }
       }
       return parts.join("\n\n");
@@ -421,9 +452,34 @@ window.__ModuleLoader__.load({
     // ---- per-question action row ----
     function QuestionActions(props) {
       const { node, sessionId, useChat, t, ctx } = props;
-      const info = useSnapshot(useChat, null, (snap) => analyzeQuestion(snap, node.key));
+      // `node` is this action row's own chat node (kind "dsh-rewind-actions"), so
+      // the question is located through the seq that buildViewNode copied out of
+      // the user/message event.
+      const questionSeq = node?.data?.seq;
+      // Selectors MUST return primitives: the session standard hook is
+      // useSyncExternalStoreWithSelector bound to a freshly created selector
+      // identity on every render, so a fresh object would read as a changed
+      // snapshot forever. The info tuple is encoded into one stable string.
+      const infoKey = useSnapshot(useChat, "", (snap) => {
+        const q = analyzeQuestion(snap, questionSeq);
+        if (q === null) return "";
+        return [q.turn, q.nodeSeq ?? "", q.boundarySeq ?? "", q.isLastQuestion ? 1 : 0, q.userText].join("\u0000");
+      });
+      const info = safeCompute(null, () => {
+        if (typeof infoKey !== "string" || infoKey === "") return null;
+        const parts = infoKey.split("\u0000");
+        const turn = Number(parts[0]);
+        if (!Number.isInteger(turn)) return null;
+        return {
+          turn,
+          nodeSeq: parts[1] === "" ? undefined : Number(parts[1]),
+          boundarySeq: parts[2] === "" ? null : Number(parts[2]),
+          isLastQuestion: parts[3] === "1",
+          userText: parts.slice(4).join("\u0000")
+        };
+      });
       const mdText = useSnapshot(useChat, "", (snap) => {
-        const q = analyzeQuestion(snap, node.key);
+        const q = analyzeQuestion(snap, questionSeq);
         if (q === null) return "";
         return `## Q\n${q.userText}\n\n## A\n${assistantTextOfTurn(snap, q.turn)}`;
       });
@@ -455,11 +511,11 @@ window.__ModuleLoader__.load({
         const cut = result.value;
         if (cut.childId === null) {
           setBusy(false);
-          show(t("errorPrefix") + "fork failed", "error");
+          show(t("errorPrefix") + t("forkFailed"), "error");
           return;
         }
         if (cut.restoreError !== "") {
-          show(`${t("restoreFailed")}：${cut.restoreError}`, "error");
+          show(t("restoreFailed", { message: cut.restoreError }), "error");
         } else if (restore) {
           const r = cut.restore;
           const restored = r?.restored?.length ?? 0;
@@ -535,7 +591,7 @@ window.__ModuleLoader__.load({
           h("button", { type: "button", className: "rc-icon-btn", style: iconButtonStyle, title: t("copyMarkdown"), onClick: () => void onCopy() }, h(CopyIcon)),
           h("button", { type: "button", className: "rc-icon-btn", style: { ...iconButtonStyle, opacity: starred ? 1 : 0.55 }, title: starred ? t("starRemove") : t("star"), onClick: onStar }, h(StarIcon, { filled: starred }))
         ),
-        confirming ? h("div", { style: { ...chip, padding: "4px 8px", border: "1px solid var(--dsw-alias-border-l1, #333)", borderRadius: "8px", background: "var(--dsw-alias-interactive-bg, rgba(0,0,0,.04))" } },
+        confirming ? h("div", { style: { ...chip, padding: "4px 8px", border: "1px solid var(--dsw-alias-border-l1, #333)", borderRadius: "8px", background: "var(--dsw-alias-interactive-bg-hover, rgba(0,0,0,.04))" } },
           h("label", { style: chip },
             h("input", { type: "checkbox", checked: restoreFiles, onChange: (e) => setRestoreFiles(e.target.checked) }),
             t("restoreFiles")),
@@ -568,7 +624,7 @@ window.__ModuleLoader__.load({
     const popBase = {
       position: "absolute", bottom: "calc(100% + 6px)", left: 0, zIndex: 1000,
       minWidth: 220, maxWidth: 340, maxHeight: 320, overflow: "auto",
-      background: "var(--dsw-alias-surface, #fff)", color: "var(--dsw-alias-label-primary, inherit)",
+      background: "var(--dsw-alias-bg-layer-1, #fff)", color: "var(--dsw-alias-label-primary, inherit)",
       border: "1px solid var(--dsw-alias-border-l1, #333)", borderRadius: "10px",
       boxShadow: "0 8px 24px rgba(0,0,0,.18)", padding: 8
     };
@@ -614,7 +670,7 @@ window.__ModuleLoader__.load({
         if (busy) return;
         setBusy(true);
         setFailed(false);
-        const sent = await runGuarded(() => sendText(ctx, sessionId, "继续"));
+        const sent = await runGuarded(() => sendText(ctx, sessionId, t("continueText")));
         setBusy(false);
         if (!sent.ok || sent.value !== true) setFailed(true);
       };
@@ -652,7 +708,7 @@ window.__ModuleLoader__.load({
         h("button", { type: "button", style: composerBtn, title: t("starred"), onClick: () => { refresh(); setOpen((v) => !v); } }, h(StarIcon, { filled: true })),
         open ? h("div", { style: popBase },
           stars.length === 0 ? h("div", { style: { ...popRow, cursor: "default", opacity: 0.6 } }, t("starredEmpty"))
-            : stars.map((turn) => h("button", { key: String(turn), type: "button", style: popRow, onClick: () => jump(turn) }, `第 ${turn} 轮`))
+            : stars.map((turn) => h("button", { key: String(turn), type: "button", style: popRow, onClick: () => jump(turn) }, t("starTurn", { turn })))
         ) : null
       );
     }
@@ -704,7 +760,7 @@ window.__ModuleLoader__.load({
         h("button", { type: "button", style: { ...composerBtn, fontSize: 14 }, title: t("mood"), onClick: () => setMood(null) }, emoji),
         mood !== null ? h("div", { style: {
           position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 84, zIndex: 1100,
-          background: "var(--dsw-alias-surface, #fff)", color: "var(--dsw-alias-label-primary, inherit)",
+          background: "var(--dsw-alias-bg-layer-1, #fff)", color: "var(--dsw-alias-label-primary, inherit)",
           border: "1px solid var(--dsw-alias-border-l1, #333)", borderRadius: "12px",
           padding: "6px 12px", fontSize: "13px", boxShadow: "0 6px 20px rgba(0,0,0,.18)", whiteSpace: "nowrap"
         } }, mood.text) : null
@@ -717,6 +773,9 @@ window.__ModuleLoader__.load({
       target: "chat",
       match: (event) => {
         if (!event || event.type !== "user/message") return null;
+        // Official input-message matches append-origin surface events only; replacement
+        // copies (compaction/rewrite) must not grow a second action row.
+        if (event.surfaceOp !== undefined && event.surfaceOp !== "append") return null;
         if (event.data?.source?.kind !== "user") return null;
         return { id: String(event.data?.id ?? event.seq), role: "start" };
       },
@@ -744,7 +803,7 @@ window.__ModuleLoader__.load({
     };
 
     return {
-      inject: ["slots", "sessions", "workspaces", "locale", "uiConversation"],
+      inject: ["slots", "sessions", "workspaces", "uiWorkspace", "locale", "uiConversation"],
       apply(ctx) {
         pluginCtx = ctx;
 

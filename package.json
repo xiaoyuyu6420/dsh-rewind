@@ -1,16 +1,24 @@
 {
   "name": "@local/dsh-rewind",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
+  "description": "DeepSeek Harness 插件：对话回退到任意提问之前（可选同时还原工作区文件），附带常用提示词、输入历史、快捷继续、收藏、复制本轮与心情陪伴。Conversation rewind for DeepSeek Harness with optional workspace file restore, quick prompts, input history, quick continue, stars, turn copy and a mood companion.",
   "type": "module",
+  "license": "MIT",
+  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "rewind", "rollback", "restore", "checkpoint", "回退", "还原"],
+  "engines": {
+    "node": ">=20",
+    "dsh": ">=0.2.1-rc.2 <0.3.0"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
-  "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg"],
+  "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "install.sh"],
   "dsh": {
+    "manifestVersion": 1,
     "bundle": { "patch": "./cordis.patch.yml" },
     "client": {
       "platform": "web",

@@ -9,8 +9,11 @@ question. Also ships a saved-prompt panel, input history with ↑↓, a one-clic
 "continue", starred-message jump, "copy this turn as Markdown", and a small mood
 emoji that reacts to session state plus a rest reminder.
 
-Targets **DSH 0.2.1-rc.2** (`webRuntime` and `conversationEvents` were renamed;
-this plugin is written against the new contracts).
+Targets **DSH 0.2.1-rc.2** and is verified on it (real-host boot smoke 14/14, host
+unit tests 19/19, client static guard passing). The previous cut was only "written
+against the new contracts"; this version actually runs them and fixes defects that
+made the action row never render, the rewind never open the new session, and the
+file restore silently fall back to the initial snapshot — see [docs/](docs/).
 
 ## Features
 
@@ -27,7 +30,7 @@ this plugin is written against the new contracts).
 ### Composer toolbar
 
 - 📝 **Saved prompts** — locally stored phrases, click to fill the composer, editable
-- ▶ **Continue** — send "继续" in one click (turns red when it fails)
+- ▶ **Continue** — send "continue" in one click (turns red when it fails)
 - 🕘 **Input history** — dropdown, plus **↑↓ recall directly in an empty composer**
 - ★ **Starred** — list starred messages and jump to that turn
 - 😴/🤔/✨/🧋 **Mood emoji** — reacts to running / finished / rest-reminder
@@ -41,13 +44,40 @@ this plugin is written against the new contracts).
 
 ## Install
 
+The bundled `install.sh` installs the plugin as a **`link:`** dependency, so this
+folder stays the live source and a DSH restart is enough after edits:
+
 ```bash
-dsh plugin --profile desktop add "file:/Users/xiao/Desktop/dsh/dsh-rewind"
+./install.sh              # install into the desktop profile
+./install.sh --uninstall  # uninstall
 ```
 
-> ⚠️ pnpm `file:` dependencies are **copied**, not symlinked. After editing the source
-> you must re-run `add` (or copy the files over
-> `~/.dsh/profiles/desktop/node_modules/@local/dsh-rewind/`) and restart DSH.
+The script locates the bundled CLI
+(`/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh`)
+automatically; override with `DSH_CLI=/path/to/dsh`. **Fully quit and restart
+DeepSeek Harness**, then reload the page.
+
+Manual equivalent:
+
+```bash
+dsh plugin --profile desktop add "link:/Users/xiao/Desktop/dsh/dsh-rewind"
+```
+
+> ⚠️ Do not use `file:`: a pnpm `file:` dependency is **copied**, so you must re-run
+> `add` after every edit. For development use `link:` (what `install.sh` does).
+
+## Verification
+
+On DSH 0.2.1-rc.2 (macOS arm64):
+
+| Gate | Command | Result |
+|---|---|---|
+| Host unit tests | `node scripts/test-host.mjs --strict` | 19/19 (snapshots/restore/auth/git auto-commit/concurrency) |
+| Real-host boot smoke | `node scripts/e2e-host.mjs` | 14/14 (isolated DSH_HOME, tarball install, boot 200, client bundle, API/401/405/404) |
+| Client static guard | `node scripts/check-client-static.mjs --strict` | PASS (`ctx.<service>` access matches `inject`; bundle loads and applies in a sandbox) |
+
+All tests use a temporary `DSH_HOME` and never touch your real `~/.dsh`; the e2e
+script reports an explicit SKIP when `dsh`/`pnpm`/network are unavailable.
 
 ## Configuration
 
@@ -63,6 +93,8 @@ Host: `~/.dsh/storages/dsh-rewind/config.json`
 
 - `enabled: false` — disable file checkpoints
 - `gitAutoCommit: false` — disable the per-turn auto git commit
+  (it only runs when the session workspace is the git work-tree root, and skips
+  while a merge/rebase/cherry-pick is in progress)
 - Also tunable: `ignoreNames` / `ignorePatterns` / `trackSizeCap` / `blobSizeCap` /
   `maxFiles` / `maxTotalBlobBytes` / `enableGitignore`
 
@@ -71,6 +103,22 @@ Client (browser localStorage):
 - `dsh-rewind.phrases` — saved prompts
 - `dsh-rewind.restIntervalMs` — rest reminder interval (default 45 min)
 - `dsh-rewind.history.<sessionId>` / `dsh-rewind.stars.<sessionId>` — history and stars
+
+## Known limitations
+
+- **Restore is destructive**: files created by hand after the checkpoint (and not
+  ignored) are deleted, and there is no "undo the last restore". Commit/back up
+  important work first, or temporarily set `enabled: false`.
+- Files larger than `blobSizeCap` (1MB by default) are fingerprinted but their
+  content is not stored, so they are `skipped` on restore.
+- A session workspace that is an **ancestor of `$DSH_HOME`** (for example the whole
+  home directory) is not tracked, so `~/.dsh` (including credentials) never enters snapshots.
+- The custom action row is anchored at `seq + 0.1` below the question, which may drop
+  that turn's `/skill` name decoration (presentation only).
+- History/stars live in browser localStorage per session; rewind/fork renumbers turns,
+  so old stars may point at a different turn.
+- Cold sessions restored after a host restart need checkpoints created while the
+  session was live (they are read back from the session persistence log).
 
 ## Crash safety
 
@@ -94,7 +142,10 @@ dsh-rewind/
   client.js         Client half: slot UI, quick actions, mood
   cordis.patch.yml  Loader plugin row
   package.json      dsh.bundle.patch + dsh.client
-  locale/*.json     Display name and runtime copy (zh/en)
+  install.sh        Install/uninstall into the desktop profile (link: dev mode)
+  locale/*.json     Display name and description (zh/en)
+  scripts/          Verification: host unit tests, real-host boot smoke, client static guard
+  docs/             Contract audits, fix records, test report, final verification
   icon.svg
 ```
 

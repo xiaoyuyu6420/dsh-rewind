@@ -7,7 +7,9 @@
 另带常用提示词面板、输入历史 ↑↓、一键「继续」、收藏跳转、复制本轮问答，
 以及一个随状态变化的心情小表情与休息提醒。
 
-适配 **DSH 0.2.1-rc.2**（`webRuntime` 已改名、`conversationEvents` 已改名，本插件按新契约编写）。
+适配 **DSH 0.2.1-rc.2**，并在该版本上完成真机验收（boot 冒烟 14/14、Host 单测 19/19、
+Client 静态守护通过）。上一版只是"按新契约编写"，本版把真实契约跑通并修掉了会导致
+动作行不渲染、回退不打开新会话、还原退化成初始状态等问题的缺陷，详见 [docs/](docs/)。
 
 ## 功能
 
@@ -37,12 +39,37 @@
 
 ## 安装
 
+推荐用仓库自带的 `install.sh`：它以 **`link:`** 依赖安装，本目录就是插件源码，改完重启 DSH 即生效。
+
 ```bash
-dsh plugin --profile desktop add "file:/Users/xiao/Desktop/dsh/dsh-rewind"
+./install.sh              # 安装到 desktop profile
+./install.sh --uninstall  # 卸载
 ```
 
-> ⚠️ pnpm 的 `file:` 依赖是**复制**而非软链。改完源码后必须重新 `add`（或手动把文件覆盖到
-> `~/.dsh/profiles/desktop/node_modules/@local/dsh-rewind/`），再重启 DSH + 刷新页面才会生效。
+脚本会自动定位内置 CLI
+（`/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh`），
+也可用 `DSH_CLI=/path/to/dsh` 指定。装完**完全退出并重启 DeepSeek Harness**，再刷新页面。
+
+手动等价命令：
+
+```bash
+dsh plugin --profile desktop add "link:/Users/xiao/Desktop/dsh/dsh-rewind"
+```
+
+> ⚠️ 不要用 `file:`：pnpm 的 `file:` 依赖是**复制**而非软链，改完源码必须重新 add。
+> 开发迭代请用 `link:`（即 `install.sh` 的做法）。
+
+## 验证
+
+在 DSH 0.2.1-rc.2（macOS arm64）上：
+
+| 门禁 | 命令 | 结果 |
+|---|---|---|
+| Host 半区单测 | `node scripts/test-host.mjs --strict` | 19/19（快照/还原/鉴权/git 自动提交/并发） |
+| 真机 boot 冒烟 | `node scripts/e2e-host.mjs` | 14/14（隔离 DSH_HOME、tarball 安装、boot 200、client bundle、API/401/405/404） |
+| Client 静态守护 | `node scripts/check-client-static.mjs --strict` | PASS（`ctx.<service>` 访问与 `inject` 一致、bundle 可在沙箱加载并 apply） |
+
+测试都用临时 `DSH_HOME`，不会碰真实 `~/.dsh`；环境缺 `dsh`/`pnpm`/网络时 e2e 会明确 SKIP。
 
 ## 配置
 
@@ -58,6 +85,7 @@ Host 配置：`~/.dsh/storages/dsh-rewind/config.json`
 
 - `enabled: false` — 关闭文件检查点
 - `gitAutoCommit: false` — 关闭每轮前自动 git 提交
+  （自动提交只在「会话工作区 == git 仓库根」时执行，且遇到 merge/rebase/cherry-pick 等状态会跳过）
 - 也可调 `ignoreNames` / `ignorePatterns` / `trackSizeCap` / `blobSizeCap` / `maxFiles` / `maxTotalBlobBytes` / `enableGitignore`
 
 客户端（浏览器 localStorage）：
@@ -65,6 +93,16 @@ Host 配置：`~/.dsh/storages/dsh-rewind/config.json`
 - `dsh-rewind.phrases` — 常用提示词
 - `dsh-rewind.restIntervalMs` — 休息提醒间隔（默认 45 分钟）
 - `dsh-rewind.history.<sessionId>` / `dsh-rewind.stars.<sessionId>` — 输入历史与收藏
+
+## 已知限制
+
+- **还原是破坏性的**：检查点之后手工新建、且未被忽略规则排除的文件会被删除；没有「撤销上一次还原」。
+  重要工作区建议先提交/备份，或临时把 `enabled` 设为 `false`。
+- 大于 `blobSizeCap`（默认 1MB）的文件只记录指纹不存内容，还原时会跳过并在结果里计入 `skipped`。
+- 当会话工作区是 `$DSH_HOME` 的祖先（例如整个 home 目录）时**不跟踪**，避免把 `~/.dsh`（含凭据）纳入快照。
+- 自定义动作行用 `seq + 0.1` 的锚点插在提问下方，可能让该轮 `/skill` 名称装饰丢失（仅展示层）。
+- 输入历史/收藏存在浏览器本地并按会话保存；回退/分叉后轮次号会重排，旧收藏可能指向别的轮。
+- 冷会话（宿主重启后）还原依赖 session 持久化日志，需插件在会话存活期间已建立检查点。
 
 ## 崩溃安全（很重要）
 
@@ -88,7 +126,10 @@ dsh-rewind/
   client.js         Client 半区：槽位 UI、快捷控件、心情
   cordis.patch.yml  Loader 插入的插件行
   package.json      dsh.bundle.patch + dsh.client
-  locale/*.json     显示名与运行时文案（中英）
+  install.sh        安装/卸载到 desktop profile（link: 开发态）
+  locale/*.json     插件显示名与描述（中英）
+  scripts/          验证脚本（Host 单测、真机 boot 冒烟、Client 静态守护）
+  docs/             契约审计、修复记录、测试报告、最终验收
   icon.svg
 ```
 
