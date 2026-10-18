@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "title": "会话回退与快捷操作",
+    "description": "回退到任意一条提问之前、或编辑最后一条重新提交，可选还原工作区文件；附带常用提示词短语面板。"
+  },
+  "rollback": "回退到此",
+  "rollbackConfirm": "确认回退？将丢弃这条提问及其后的对话",
+  "rollbackBusy": "回退中…",
+  "rollbackDone": "已回退：还原 {restored} 个文件，删除 {deleted} 个",
+  "rollbackNone": "本会话没有可还原的文件记录",
+  "restoreFiles": "同时还原工作区文件",
+  "edit": "修改并重发",
+  "editBusy": "处理中…",
+  "branchOnly": "仅分叉对话（不动文件）",
+  "cancel": "取消",
+  "confirm": "确认",
+  "errorPrefix": "操作失败：",
+  "phrasePanel": "常用提示词",
+  "phraseAdd": "保存当前草稿",
+  "phraseEdit": "编辑短语",
+  "phraseSave": "保存",
+  "phraseClear": "清空",
+  "phraseEmpty": "暂无短语",
+  "phraseHint": "每行一条短语"
+}

@@ -1,0 +1,25 @@
+{
+  "meta": {
+    "title": "Conversation Rewind & Quick Actions",
+    "description": "Roll back to before any question or edit the last one and resubmit, optionally restoring workspace files; ships a saved-prompt phrase panel."
+  },
+  "rollback": "Roll back here",
+  "rollbackConfirm": "Confirm rollback? This discards this question and everything after it",
+  "rollbackBusy": "Rolling back…",
+  "rollbackDone": "Rolled back: restored {restored} files, deleted {deleted}",
+  "rollbackNone": "No restorable file records for this session",
+  "restoreFiles": "Also restore workspace files",
+  "edit": "Edit & resend",
+  "editBusy": "Working…",
+  "branchOnly": "Branch only (keep files)",
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "errorPrefix": "Failed: ",
+  "phrasePanel": "Saved prompts",
+  "phraseAdd": "Save current draft",
+  "phraseEdit": "Edit prompts",
+  "phraseSave": "Save",
+  "phraseClear": "Clear",
+  "phraseEmpty": "No saved prompts",
+  "phraseHint": "One prompt per line"
+}
