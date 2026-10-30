@@ -71,3 +71,29 @@ git tag v0.2.0 && git push origin v0.2.0   # 打 tag 让流水线留痕(幂等,�
 3. `npm publish --dry-run` 看包内容(应为 12 个文件,约 34 kB)
 4. `git commit` → `git tag vX.Y.Z` → `git push origin main --tags`
 5. 发布后:`dsh plugin --profile web add @xiaoyuyu6420/dsh-rewind@X.Y.Z` 在隔离 profile 实测一次
+
+## 7. 同类项目对照(npm 上的无作用域 `dsh-rewind`)
+
+结论:**痛点同源,产品不撞车**;对方在 DSH 0.2.1-rc.5 上已经跑不起来,但**名字撞车**需在文档里讲清。
+
+| 项目 | 事实 |
+|---|---|
+| 包/仓库 | `dsh-rewind`(无作用域,2026-08-14 首版,2026-08-16 后停更)/ `github.com/LJH-dot/dsh-rewind` |
+| 体量 | 10 个版本(0.1.0→0.11.12)、6 个文件 54 KB、1 star / 0 fork;近 30 天下载 968、近 7 天 614(多为镜像/爬虫) |
+| 交互 | Claude Code 风格斜杠命令:`/rewind [n] [--conversation\|--code]`、`/unrewind` |
+| 文件还原 | `git stash create` 快照 → `git reset --hard` + `git stash apply`;非 git 工作区自动 `git init` 建基线 |
+| 对话还原 | 从 vault 备份**原地硬覆写**会话,用空内容 assistant 事件当切点 |
+| 宿主兼容 | ❌ 在新版不生效:client inject 的 `conversationEvents` 服务在 0.2.1-rc.5 全宿主 **0 处**;`dsh.client.inject` 声明的 `@deepseek-ai/dsh-client-runtime` 包**已不存在**;且未声明 `engines.dsh`(装了只会"没反应") |
+
+对照本项目:
+
+| 维度 | 对方 | 本项目 |
+|---|---|---|
+| 入口 | 斜杠命令 | 每条提问下方内联按钮 + 输入框工具区 |
+| 还原粒度 | 整仓 `git reset --hard`(README 自认:含仓库外改动、未跟踪文件可能残留) | 按轮 CAS 检查点,只还原该轮动过的文件,尊重 `.gitignore`,有大小上限 |
+| 对话还原 | 原地覆写(不可逆) | 分叉新会话 + 旧会话归档(历史可追) |
+| 附带能力 | 无 | 常用提示词、输入历史、一键继续、收藏跳转、复制本轮、心情/休息提醒 |
+| 兼容保障 | 无门禁、无 `engines` | 五道门禁 + 契约守卫 + 真机两轮闭环 + `engines.dsh` 范围声明 |
+
+因此:包名必须带作用域(`@xiaoyuyu6420/dsh-rewind`);README 已加「与 npm 上同名包无关」的说明,
+对外介绍带上作者与仓库地址,避免用户装错。

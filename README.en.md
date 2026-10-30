@@ -84,6 +84,11 @@ PROFILE=web ./install.sh      # other profile (desktop by default)
 > The `headless` profile does not apply this plugin (it injects `webServer`/`connection`).
 
 Full install/config/troubleshooting guide: [docs/INSTALL.md](docs/INSTALL.md).
+> ℹ️ **Not the same as the unscoped `dsh-rewind` on npm** — that one is a different project by l-dot
+> (last updated 2026-08, and it injects a `conversationEvents` service that no longer exists in DSH 0.2.1,
+> so it does not work on current hosts). This project publishes as the scoped
+> `@xiaoyuyu6420/dsh-rewind` from [xiaoyuyu6420/dsh-rewind](https://github.com/xiaoyuyu6420/dsh-rewind).
+
 Release channels and their current status: [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Verification

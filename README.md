@@ -70,6 +70,11 @@ PROFILE=web ./install.sh      # 换 profile(默认 desktop)
 > `headless` profile 不适用(插件 inject `webServer`/`connection`,headless 没有这两个服务)。
 
 完整安装/配置/排错见 [docs/INSTALL.md](docs/INSTALL.md)。
+> ℹ️ **与 npm 上同名包无关**:npm 有一个无作用域的 `dsh-rewind`(作者 l-dot,2026-08 后停更;
+> 它注入的 `conversationEvents` 服务在 DSH 0.2.1 已不存在,装在新版宿主上不会生效)。
+> 本项目的包名是带作用域的 `@xiaoyuyu6420/dsh-rewind`,仓库是 [xiaoyuyu6420/dsh-rewind](https://github.com/xiaoyuyu6420/dsh-rewind)。
+> 两者实现不同:本项目用内联按钮 + 按轮 CAS 检查点精确还原 + 分叉新会话;详见 [docs/RELEASE.md](docs/RELEASE.md)。
+
 发版渠道与当前状态(npm / GitHub / tarball)见 [docs/RELEASE.md](docs/RELEASE.md)。
 
 ## 验证
