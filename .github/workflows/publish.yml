@@ -1,0 +1,38 @@
+name: Publish to npm
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      # 发版前把能离线跑的门禁全跑一遍:tag 未必落在绿 commit 上,
+      # 别把没测过的代码发出去。(需要真实 DSH 的 e2e 不在此跑:CI 里没有宿主。)
+      - name: Syntax check
+        run: node --check index.js && node --check client.js
+
+      - name: Host unit tests
+        run: node scripts/test-host.mjs --strict
+
+      - name: Client static guard
+        run: node scripts/check-client-static.mjs --strict
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

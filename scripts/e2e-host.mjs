@@ -41,7 +41,7 @@ const DSH_BIN_CANDIDATES = [
 ].filter(Boolean);
 
 const BOOT_TIMEOUT_MS = 120_000;
-const PLUGIN_NAME = "@local/dsh-rewind";
+const PLUGIN_NAME = "@xiaoyuyu6420/dsh-rewind";
 const results = [];
 let skipped = null;
 let bootProc = null;
@@ -304,7 +304,7 @@ async function main() {
   }
   check("dsh plugin add 成功", true);
 
-  const installedIndex = path.join(home, "profiles", "web", "node_modules", "@local", "dsh-rewind", "index.js");
+  const installedIndex = path.join(home, "profiles", "web", "node_modules", ...PLUGIN_NAME.split("/"), "index.js");
   const installedPkg = path.join(home, "profiles", "web", "package.json");
   let profilePkg = {};
   try { profilePkg = JSON.parse(fs.readFileSync(installedPkg, "utf8")); } catch { /* 下面断言会报 */ }

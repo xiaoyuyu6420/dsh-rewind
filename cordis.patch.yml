@@ -1,4 +1,4 @@
 - insert:
     - id: dsh-rewind
-      name: '@local/dsh-rewind'
+      name: '@xiaoyuyu6420/dsh-rewind'
       config: {}

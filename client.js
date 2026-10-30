@@ -1,4 +1,4 @@
-// Client half of @local/dsh-rewind (v3, crash-hardened).
+// Client half of @xiaoyuyu6420/dsh-rewind (crash-hardened).
 //
 // Rendering contract: this plugin MUST NOT crash a host slot. Any uncaught
 // throw inside a slot renderer makes DSH log `slot entry crashed in '<slot>'`
@@ -11,7 +11,7 @@
 // prompt via `session.prompt([{ type: "text", text }], "queue")`,
 // create accepts `{ workspaceId }` or `{ cwd }`.
 window.__ModuleLoader__.load({
-  id: "@local/dsh-rewind",
+  id: "@xiaoyuyu6420/dsh-rewind",
   factory(require) {
     const React = require("react");
     const { useState, useEffect, useRef, useCallback, Component } = React;

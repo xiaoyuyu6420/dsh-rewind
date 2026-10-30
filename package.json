@@ -1,29 +1,83 @@
 {
-  "name": "@local/dsh-rewind",
-  "version": "0.1.1",
-  "private": true,
-  "description": "DeepSeek Harness 插件：对话回退到任意提问之前（可选同时还原工作区文件），附带常用提示词、输入历史、快捷继续、收藏、复制本轮与心情陪伴。Conversation rewind for DeepSeek Harness with optional workspace file restore, quick prompts, input history, quick continue, stars, turn copy and a mood companion.",
+  "name": "@xiaoyuyu6420/dsh-rewind",
+  "version": "0.2.0",
+  "description": "DeepSeek Harness 插件:回到任意提问之前重新来——对话回退到该提问之前(可选同时把 agent 之后改过的工作区文件一起还原,按轮 CAS 检查点),并附带常用提示词面板、输入历史 ↑↓、一键继续、收藏跳转、复制本轮问答与心情陪伴。Conversation rewind for DeepSeek Harness: roll back to before any question with optional per-turn workspace file restore (CAS checkpoints), plus saved prompts, input history, quick continue, starred jump, turn copy and a mood companion.",
   "type": "module",
-  "license": "MIT",
-  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "rewind", "rollback", "restore", "checkpoint", "回退", "还原"],
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale",
+    "icon.svg",
+    "install.sh",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "docs/INSTALL.md"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "rewind",
+    "rollback",
+    "revert",
+    "restore",
+    "checkpoint",
+    "undo",
+    "fork",
+    "workspace",
+    "回退",
+    "还原",
+    "撤销",
+    "会话回退",
+    "工作区还原",
+    "检查点",
+    "输入历史",
+    "快捷操作",
+    "复制本轮"
+  ],
   "engines": {
     "node": ">=20",
     "dsh": ">=0.2.1-rc.2 <0.3.0"
   },
-  "exports": {
-    ".": "./index.js",
-    "./client": "./client.js",
-    "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
+  "scripts": {
+    "test": "node scripts/test-host.mjs --strict",
+    "test:client": "node scripts/check-client-static.mjs --strict",
+    "test:contract": "node scripts/check-runtime-contract.mjs",
+    "test:e2e": "node scripts/e2e-host.mjs",
+    "test:e2e:turn": "node scripts/e2e-turn.mjs",
+    "verify": "node scripts/test-host.mjs --strict && node scripts/check-client-static.mjs --strict && node scripts/check-runtime-contract.mjs && node scripts/e2e-host.mjs && node scripts/e2e-turn.mjs"
   },
-  "files": ["index.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg", "install.sh"],
   "dsh": {
-    "manifestVersion": 1,
-    "bundle": { "patch": "./cordis.patch.yml" },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "immediately": true,
-      "inject": ["@deepseek-ai/dsh-client-ui-conversation"]
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xiaoyuyu6420/dsh-rewind.git"
+  },
+  "homepage": "https://github.com/xiaoyuyu6420/dsh-rewind#readme",
+  "bugs": {
+    "url": "https://github.com/xiaoyuyu6420/dsh-rewind/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

@@ -51,27 +51,39 @@ removed, restore degrades to the baseline snapshot (feature loss, no crash).
 
 ## Install
 
-The bundled `install.sh` installs the plugin as a **`link:`** dependency, so this
-folder stays the live source and a DSH restart is enough after edits:
+### Desktop: plugin manager (recommended)
+
+DSH Desktop **Settings → Plugins → Add plugin**, then enter the npm name
+`@xiaoyuyu6420/dsh-rewind`, the GitHub URL
+`https://github.com/xiaoyuyu6420/dsh-rewind`, or an absolute path to a local `.tgz`.
+Fully quit and restart DeepSeek Harness afterwards.
+
+### Command line / web profile
 
 ```bash
-./install.sh              # install into the desktop profile
-./install.sh --uninstall  # uninstall
+dsh plugin --profile web add @xiaoyuyu6420/dsh-rewind        # npm
+dsh plugin --profile web add github:xiaoyuyu6420/dsh-rewind  # GitHub (tracks main)
 ```
 
-The script locates the bundled CLI
-(`/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh`)
-automatically; override with `DSH_CLI=/path/to/dsh`. **Fully quit and restart
-DeepSeek Harness**, then reload the page.
-
-Manual equivalent:
+The bundled `install.sh` wraps every channel (it finds the bundled Desktop CLI
+automatically; override with `DSH_CLI=/path/to/dsh`):
 
 ```bash
-dsh plugin --profile desktop add "link:/Users/xiao/Desktop/dsh/dsh-rewind"
+./install.sh                  # desktop profile, install from npm
+./install.sh --github         # install from GitHub
+./install.sh --tarball FILE    # install from a local .tgz
+./install.sh --link           # dev: link this folder; edits apply on restart
+./install.sh --uninstall      # uninstall
+PROFILE=web ./install.sh      # other profile (desktop by default)
 ```
 
-> ⚠️ Do not use `file:`: a pnpm `file:` dependency is **copied**, so you must re-run
-> `add` after every edit. For development use `link:` (what `install.sh` does).
+> ⚠️ For development use `--link` (a `link:` dependency): a pnpm `file:` dependency is
+> **copied**, so you must re-run `add` after every edit. Do not change the desktop profile
+> from the command line while the app is running — it holds the profile lock
+> (`timed out waiting for the writer lock`).
+> The `headless` profile does not apply this plugin (it injects `webServer`/`connection`).
+
+Full install/config/troubleshooting guide: [docs/INSTALL.md](docs/INSTALL.md).
 
 ## Verification
 
@@ -153,10 +165,10 @@ dsh-rewind/
   client.js         Client half: slot UI, quick actions, mood
   cordis.patch.yml  Loader plugin row
   package.json      dsh.bundle.patch + dsh.client
-  install.sh        Install/uninstall into the desktop profile (link: dev mode)
+  install.sh        Install/uninstall (npm / GitHub / tarball / link dev mode)
   locale/*.json     Display name and description (zh/en)
   scripts/          Verification: host unit tests, real-host boot smoke, client static guard, runtime contract guard
-  docs/             Contract audits, fix records, test report, final verification, version compatibility, runtime contract
+  docs/             INSTALL guide, contract audits, fix records, test report, final verification, version compatibility, runtime contract
   icon.svg
 ```
 

@@ -1,4 +1,4 @@
-// Host half of @local/dsh-rewind.
+// Host half of @xiaoyuyu6420/dsh-rewind.
 // Per-turn workspace checkpoints (CAS blobs) + a restore HTTP API.
 // Adapted for DSH 0.2.x: route auth uses `connection.requestRejection` instead
 // of the removed `webRuntime.trustedHosts`.

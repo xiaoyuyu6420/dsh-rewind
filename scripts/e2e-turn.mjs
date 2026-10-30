@@ -54,7 +54,7 @@ const DSH_BIN_CANDIDATES = [
   "dsh",
 ].filter(Boolean);
 
-const PLUGIN_NAME = "@local/dsh-rewind";
+const PLUGIN_NAME = "@xiaoyuyu6420/dsh-rewind";
 const BOOT_TIMEOUT_MS = 120_000;
 const TURN_TIMEOUT_MS = 90_000;
 
@@ -469,7 +469,7 @@ async function main() {
     }
     throw new Error(`dsh plugin add 失败（非网络原因）：exit ${add.status}`);
   }
-  const installedIndex = path.join(home, "profiles", "web", "node_modules", "@local", "dsh-rewind", "index.js");
+  const installedIndex = path.join(home, "profiles", "web", "node_modules", ...PLUGIN_NAME.split("/"), "index.js");
   check("插件装进隔离 web profile", fs.existsSync(installedIndex), installedIndex);
 
   // ---------- 3. boot dsh web（隔离 home，假端点） ----------

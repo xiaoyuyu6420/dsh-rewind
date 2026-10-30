@@ -39,25 +39,37 @@
 
 ## 安装
 
-推荐用仓库自带的 `install.sh`：它以 **`link:`** 依赖安装，本目录就是插件源码，改完重启 DSH 即生效。
+### 桌面端:插件管理器(推荐)
+
+DSH Desktop **设置 → 插件 → 添加插件**,输入 npm 包名 `@xiaoyuyu6420/dsh-rewind`,
+或 GitHub 地址 `https://github.com/xiaoyuyu6420/dsh-rewind`,或本地 `.tgz` 绝对路径。
+装完完全退出并重启 DeepSeek Harness。
+
+### 命令行 / Web profile
 
 ```bash
-./install.sh              # 安装到 desktop profile
-./install.sh --uninstall  # 卸载
+dsh plugin --profile web add @xiaoyuyu6420/dsh-rewind        # npm
+dsh plugin --profile web add github:xiaoyuyu6420/dsh-rewind  # GitHub(跟随 main)
 ```
 
-脚本会自动定位内置 CLI
-（`/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh`），
-也可用 `DSH_CLI=/path/to/dsh` 指定。装完**完全退出并重启 DeepSeek Harness**，再刷新页面。
-
-手动等价命令：
+本仓库的 `install.sh` 把各种渠道包了一层(自动定位 Desktop 内置 CLI,可用
+`DSH_CLI=/path/to/dsh` 指定):
 
 ```bash
-dsh plugin --profile desktop add "link:/Users/xiao/Desktop/dsh/dsh-rewind"
+./install.sh                  # 默认 desktop profile,从 npm 安装
+./install.sh --github         # 从 GitHub 安装
+./install.sh --tarball FILE    # 从本地 .tgz 安装
+./install.sh --link           # 开发态:link 本目录,改完源码重启即生效
+./install.sh --uninstall      # 卸载
+PROFILE=web ./install.sh      # 换 profile(默认 desktop)
 ```
 
-> ⚠️ 不要用 `file:`：pnpm 的 `file:` 依赖是**复制**而非软链，改完源码必须重新 add。
-> 开发迭代请用 `link:`（即 `install.sh` 的做法）。
+> ⚠️ 开发态请用 `--link`(即 `link:` 依赖):pnpm 的 `file:` 依赖是**复制**而非软链,
+> 改完源码必须重新 add。桌面端运行期间不要用命令行改 profile(宿主持锁,会报
+> `timed out waiting for the writer lock`)。
+> `headless` profile 不适用(插件 inject `webServer`/`connection`,headless 没有这两个服务)。
+
+完整安装/配置/排错见 [docs/INSTALL.md](docs/INSTALL.md)。
 
 ## 验证
 
@@ -133,7 +145,7 @@ dsh-rewind/
   install.sh        安装/卸载到 desktop profile（link: 开发态）
   locale/*.json     插件显示名与描述（中英）
   scripts/          验证脚本（Host 单测、真机 boot 冒烟、Client 静态守护、宿主契约守卫）
-  docs/             契约审计、修复记录、测试报告、最终验收、版本兼容复核、运行时契约
+  docs/             INSTALL 安装指南、契约审计、修复记录、测试报告、最终验收、版本兼容复核、运行时契约
   icon.svg
 ```
 
