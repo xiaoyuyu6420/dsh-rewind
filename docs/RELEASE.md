@@ -24,6 +24,23 @@ CI 门禁在 `.github/workflows/ci.yml`。**推送 `v*` tag 即触发发布**(�
   发布流水线成功,说明那是一个绕过 2FA 的自动化 token。GitHub secret 是只写不可读的,
   所以它只能在 Actions 里被使用,读不出来拷到别处。
 
+### 实测结果(2026-10-30 15:0x,借 dsh-backup 的 secret 跑了一次 dispatch)
+
+- 门禁全过、tarball 正确(12 文件 / 34.3 kB / `@xiaoyuyu6420/dsh-rewind@0.2.0`);
+- `npm publish` 在 **PUT 建包** 这一步失败:`E404 Not Found - PUT .../@xiaoyuyu6420%2fdsh-rewind`;
+- 结论:该 `NPM_TOKEN` 是**按包授权的 granular token**(能发 `@xiaoyuyu6420/dsh-backup`,无创建新包权限)。
+  所以它只能维持 dsh-backup 自己的发版,**不能用来发新包**。
+- 临时工作流已用 PR #136 回滚:dsh-backup 的 `.github/workflows/` 只剩 `ci.yml / compat.yml / publish.yml`,
+  `package.json` 仍是 0.14.2,发布逻辑未变(只在 Actions 历史里多了一条失败 run)。
+
+### 名字占用提醒
+
+npm 上无作用域的 `dsh-rewind` 已被第三方占用(`l-dot`,`github.com/LJH-dot/dsh-rewind`,v0.11.12,
+"Claude Code-style /rewind for DSH"),所以:
+
+- 本插件**必须**用带作用域的名字 `@xiaoyuyu6420/dsh-rewind`;
+- 对外说明时建议带上作者/仓库地址,避免与那个同名插件混淆。
+
 ### 可选处置
 
 1. **找回账号**:优先找 TOTP 是否还在别的设备/密码管理器里(iCloud 钥匙串、1Password、
