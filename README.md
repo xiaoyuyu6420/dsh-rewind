@@ -7,9 +7,9 @@
 另带常用提示词面板、输入历史 ↑↓、一键「继续」、收藏跳转、复制本轮问答，
 以及一个随状态变化的心情小表情与休息提醒。
 
-适配 **DSH 0.2.1-rc.2**，并在该版本上完成真机验收（boot 冒烟 14/14、Host 单测 19/19、
-Client 静态守护通过）。上一版只是"按新契约编写"，本版把真实契约跑通并修掉了会导致
-动作行不渲染、回退不打开新会话、还原退化成初始状态等问题的缺陷，详见 [docs/](docs/)。
+适配 **DSH 0.2.1-rc.5**,并已在 rc.2 上完成过同一轮真机验收(boot 冒烟 14/14、Host 单测 19/19、Client 静态守护通过)。上一版只是"按新契约编写",本版把真实契约跑通并修掉了会导致动作行不渲染、回退不打开新会话、还原退化成初始状态等问题的缺陷,详见 [docs/](docs/)。
+
+宿主 0.2.1-rc.2 → rc.5 的逐条契约复核见 [docs/compat-rc5.md](docs/compat-rc5.md):rc.5 上 boot 冒烟仍 14/14,依赖的宿主/客户端契约点全部未变,**无需改代码**。唯一需要留意的是 rc.5 把同步会话事件读取(`snapshotEvents`/`ownEvents`/`eventAt`)整族标为 deprecated(官方自身也仍在用,且暂无同步替代品);将来若被移除,restore 会退回 baseline(功能降级、不崩溃)。
 
 ## 功能
 
@@ -67,7 +67,9 @@ dsh plugin --profile desktop add "link:/Users/xiao/Desktop/dsh/dsh-rewind"
 |---|---|---|
 | Host 半区单测 | `node scripts/test-host.mjs --strict` | 19/19（快照/还原/鉴权/git 自动提交/并发） |
 | 真机 boot 冒烟 | `node scripts/e2e-host.mjs` | 14/14（隔离 DSH_HOME、tarball 安装、boot 200、client bundle、API/401/405/404） |
+| 真机轮次闭环 | `node scripts/e2e-turn.mjs` | 22/22（隔离 home + 本地假模型端点 → **真实两轮对话** → 检查点落盘 → HTTP restore 精确还原文件；见 [docs/e2e-turn.md](docs/e2e-turn.md)） |
 | Client 静态守护 | `node scripts/check-client-static.mjs --strict` | PASS（`ctx.<service>` 访问与 `inject` 一致、bundle 可在沙箱加载并 apply） |
+| 宿主契约守卫 | `node scripts/check-runtime-contract.mjs` | 17/17 PASS（依赖的宿主/客户端契约点，**升级 DSH 后先跑这个**；见 [docs/runtime-contract.md](docs/runtime-contract.md)） |
 
 测试都用临时 `DSH_HOME`，不会碰真实 `~/.dsh`；环境缺 `dsh`/`pnpm`/网络时 e2e 会明确 SKIP。
 
@@ -103,6 +105,8 @@ Host 配置：`~/.dsh/storages/dsh-rewind/config.json`
 - 自定义动作行用 `seq + 0.1` 的锚点插在提问下方，可能让该轮 `/skill` 名称装饰丢失（仅展示层）。
 - 输入历史/收藏存在浏览器本地并按会话保存；回退/分叉后轮次号会重排，旧收藏可能指向别的轮。
 - 冷会话（宿主重启后）还原依赖 session 持久化日志，需插件在会话存活期间已建立检查点。
+- 只作用于 **web / desktop** profile：插件 inject 了 `webServer` 与 `connection`（还原走 HTTP 接口），
+  `headless` profile 没有这两个服务，插件不会 apply —— `dsh --profile headless` 下没有检查点属预期行为。
 
 ## 崩溃安全（很重要）
 
@@ -128,8 +132,8 @@ dsh-rewind/
   package.json      dsh.bundle.patch + dsh.client
   install.sh        安装/卸载到 desktop profile（link: 开发态）
   locale/*.json     插件显示名与描述（中英）
-  scripts/          验证脚本（Host 单测、真机 boot 冒烟、Client 静态守护）
-  docs/             契约审计、修复记录、测试报告、最终验收
+  scripts/          验证脚本（Host 单测、真机 boot 冒烟、Client 静态守护、宿主契约守卫）
+  docs/             契约审计、修复记录、测试报告、最终验收、版本兼容复核、运行时契约
   icon.svg
 ```
 

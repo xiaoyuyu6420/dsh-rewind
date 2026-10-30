@@ -9,11 +9,18 @@ question. Also ships a saved-prompt panel, input history with ↑↓, a one-clic
 "continue", starred-message jump, "copy this turn as Markdown", and a small mood
 emoji that reacts to session state plus a rest reminder.
 
-Targets **DSH 0.2.1-rc.2** and is verified on it (real-host boot smoke 14/14, host
-unit tests 19/19, client static guard passing). The previous cut was only "written
-against the new contracts"; this version actually runs them and fixes defects that
+Targets **DSH 0.2.1-rc.5** (the same code passed full real-host verification on rc.2:
+boot smoke 14/14, host unit tests 19/19, client static guard). The previous cut was only
+"written against the new contracts"; this version actually runs them and fixes defects that
 made the action row never render, the rewind never open the new session, and the
 file restore silently fall back to the initial snapshot — see [docs/](docs/).
+
+The rc.2 → rc.5 contract re-audit lives in [docs/compat-rc5.md](docs/compat-rc5.md):
+boot smoke is still 14/14 on rc.5 and every host/client contract this plugin depends on is
+unchanged, so **no code changes were needed**. The one thing to watch: rc.5 marks the whole
+synchronous session-event read family (`snapshotEvents`/`ownEvents`/`eventAt`) deprecated —
+the official packages still use it and there is no synchronous replacement — if it is ever
+removed, restore degrades to the baseline snapshot (feature loss, no crash).
 
 ## Features
 
@@ -74,7 +81,9 @@ On DSH 0.2.1-rc.2 (macOS arm64):
 |---|---|---|
 | Host unit tests | `node scripts/test-host.mjs --strict` | 19/19 (snapshots/restore/auth/git auto-commit/concurrency) |
 | Real-host boot smoke | `node scripts/e2e-host.mjs` | 14/14 (isolated DSH_HOME, tarball install, boot 200, client bundle, API/401/405/404) |
+| Real-turn end-to-end | `node scripts/e2e-turn.mjs` | 22/22 (isolated home + local fake model endpoint → **two real conversation turns** → checkpoints on disk → HTTP restore exactly restores files; see [docs/e2e-turn.md](docs/e2e-turn.md)) |
 | Client static guard | `node scripts/check-client-static.mjs --strict` | PASS (`ctx.<service>` access matches `inject`; bundle loads and applies in a sandbox) |
+| Runtime contract guard | `node scripts/check-runtime-contract.mjs` | 17/17 PASS (the host/client contracts this plugin depends on — **run this first after upgrading DSH**; see [docs/runtime-contract.md](docs/runtime-contract.md)) |
 
 All tests use a temporary `DSH_HOME` and never touch your real `~/.dsh`; the e2e
 script reports an explicit SKIP when `dsh`/`pnpm`/network are unavailable.
@@ -119,6 +128,8 @@ Client (browser localStorage):
   so old stars may point at a different turn.
 - Cold sessions restored after a host restart need checkpoints created while the
   session was live (they are read back from the session persistence log).
+- Web/desktop profiles only: the plugin injects `webServer` and `connection` (restore goes over
+  HTTP), so the `headless` profile never applies it — no checkpoints under `dsh --profile headless` is expected.
 
 ## Crash safety
 
@@ -144,8 +155,8 @@ dsh-rewind/
   package.json      dsh.bundle.patch + dsh.client
   install.sh        Install/uninstall into the desktop profile (link: dev mode)
   locale/*.json     Display name and description (zh/en)
-  scripts/          Verification: host unit tests, real-host boot smoke, client static guard
-  docs/             Contract audits, fix records, test report, final verification
+  scripts/          Verification: host unit tests, real-host boot smoke, client static guard, runtime contract guard
+  docs/             Contract audits, fix records, test report, final verification, version compatibility, runtime contract
   icon.svg
 ```
 
