@@ -70,6 +70,7 @@ PROFILE=web ./install.sh      # 换 profile(默认 desktop)
 > `headless` profile 不适用(插件 inject `webServer`/`connection`,headless 没有这两个服务)。
 
 完整安装/配置/排错见 [docs/INSTALL.md](docs/INSTALL.md)。
+发版渠道与当前状态(npm / GitHub / tarball)见 [docs/RELEASE.md](docs/RELEASE.md)。
 
 ## 验证
 

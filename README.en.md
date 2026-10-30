@@ -84,6 +84,7 @@ PROFILE=web ./install.sh      # other profile (desktop by default)
 > The `headless` profile does not apply this plugin (it injects `webServer`/`connection`).
 
 Full install/config/troubleshooting guide: [docs/INSTALL.md](docs/INSTALL.md).
+Release channels and their current status: [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Verification
 
