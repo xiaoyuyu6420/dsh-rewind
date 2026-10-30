@@ -33,7 +33,11 @@ jobs:
         run: node scripts/check-client-static.mjs --strict
 
       # 幂等:版本已存在(例如手工发布过)就跳过,不把 tag 变成一次红色构建。
+      # 未配置 NPM_TOKEN(例如 npm 凭据待恢复)时同样优雅跳过,见 docs/RELEASE.md。
       - name: Publish to npm
+        if: env.NODE_AUTH_TOKEN != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           name=$(node -p "require('./package.json').name")
           version=$(node -p "require('./package.json').version")
@@ -42,5 +46,10 @@ jobs:
           else
             npm publish --access public
           fi
+
+      - name: npm publish skipped (no NPM_TOKEN)
+        if: env.NODE_AUTH_TOKEN == ''
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "::warning::NPM_TOKEN 未配置,npm 发布已跳过。恢复凭据后见 docs/RELEASE.md §3。"
